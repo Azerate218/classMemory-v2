@@ -307,7 +307,7 @@ class _ClassMemory
             windowMatchMode := StrReplace(windowMatchMode, "0x")
             SetTitleMatchMode(windowMatchMode)
         }
-        pid := WinGet(program)
+        pid := WinGetPID(program)
         if windowMatchMode
             SetTitleMatchMode(mode)    ; In case executed in autoexec
 
@@ -716,12 +716,12 @@ class _ClassMemory
         if (windowMatchMode && A_TitleMatchMode != windowMatchMode)
         {
             mode := A_TitleMatchMode ; This is a string and will not contain the 0x prefix
-            StringReplace, windowMatchMode, windowMatchMode, 0x ; remove hex prefix as SetTitleMatchMode will throw a run time error. This will occur if integer mode is set to hex and matchmode param is passed as an number not a string.
-            SetTitleMatchMode, %windowMatchMode%    ;mode 3 is an exact match
+            windowMatchMode := StrReplace(windowMatchMode, "0x")
+            SetTitleMatchMode(windowMatchMode)    ;mode 3 is an exact match
         }
-        WinGet, hWnd, ID, %WindowTitle%
+        hWnd:=WinGetID(WindowTitle)
         if mode
-            SetTitleMatchMode, %mode%    ; In case executed in autoexec
+            SetTitleMatchMode(mode)    ; In case executed in autoexec
         if !hWnd
             return ; return blank failed to find window
        ; GetWindowLong returns a Long (Int) and GetWindowLongPtr return a Long_Ptr
@@ -790,8 +790,10 @@ class _ClassMemory
             return result ; error -3, -4
         for k, module in aModules 
         {
-            if (address >= module.lpBaseOfDll && address < module.lpBaseOfDll + module.SizeOfImage)
-                return 1, aModuleInfo := module, offsetFromModuleBase := address - module.lpBaseOfDll
+            if (address >= module.lpBaseOfDll && address < module.lpBaseOfDll + module.SizeOfImage){
+                aModuleInfo := module, offsetFromModuleBase := address - module.lpBaseOfDll
+                return 1 
+            }
         }    
         return -1    
     }
@@ -849,7 +851,8 @@ class _ClassMemory
             closeHandle := hProcess := this.openProcess(PID, this.aRights.PROCESS_QUERY_INFORMATION)
         if (hProcess && DllCall("IsWow64Process", "Ptr", hProcess, "Int*", Wow64Process))
             result := !Wow64Process
-        return result, closeHandle ? this.CloseHandle(hProcess) : ""
+        closeHandle ? this.CloseHandle(hProcess) : ""
+        return result
     }
     /*
         _Out_  PBOOL Wow64Proces value set to:
@@ -898,12 +901,12 @@ class _ClassMemory
         aModules := []
         if !moduleCount := this.EnumProcessModulesEx(lphModule)
             return -3  
-        loop % moduleCount
+        loop moduleCount
         {
             this.GetModuleInformation(hModule := numget(lphModule, (A_index - 1) * A_PtrSize), aModuleInfo)
             aModuleInfo.Name := this.GetModuleFileNameEx(hModule)
             filePath := aModuleInfo.name
-            SplitPath, filePath, fileName
+            SplitPath(filePath, &fileName)
             aModuleInfo.fileName := fileName
             if useFileNameAsKey
                 aModules[fileName] := aModuleInfo
@@ -941,7 +944,7 @@ class _ClassMemory
                     , "Str", lpFilename
                     , "Uint", 2048 / (A_IsUnicode ? 2 : 1))
         if fileNameNoPath
-            SplitPath, lpFilename, lpFilename ; strips the path so = GDI32.dll
+            SplitPath(lpFilename, &lpFilename) ; strips the path so = GDI32.dll
 
         return lpFilename
     }
@@ -977,17 +980,17 @@ class _ClassMemory
         return reqSize // A_PtrSize ; module count  ; sizeof(HMODULE) - enumerate the array of HMODULEs     
     }
 
-    GetModuleInformation(hModule, & aModuleInfo)
+    GetModuleInformation(hModule, &aModuleInfo)
     {
         VarSetCapacity(MODULEINFO, A_PtrSize * 3), aModuleInfo := []
-        return DllCall("psapi\GetModuleInformation"
-                    , "Ptr", this.hProcess
-                    , "Ptr", hModule
-                    , "Ptr", &MODULEINFO
-                    , "UInt", A_PtrSize * 3)
-                , aModuleInfo := {  lpBaseOfDll: numget(MODULEINFO, 0, "Ptr")
-                                ,   SizeOfImage: numget(MODULEINFO, A_PtrSize, "UInt")
-                                ,   EntryPoint: numget(MODULEINFO, A_PtrSize * 2, "Ptr") }
+        return DllCall("psapi\GetModuleInformation",
+                    "Ptr", this.hProcess,
+                    "Ptr", hModule,
+                    "Ptr", &MODULEINFO,
+                    "UInt", A_PtrSize * 3)
+                aModuleInfo := {lpBaseOfDll: numget(MODULEINFO, 0, "Ptr"),
+                                SizeOfImage: numget(MODULEINFO, A_PtrSize, "UInt"),
+                                EntryPoint: numget(MODULEINFO, A_PtrSize * 2, "Ptr")}
     }
 
     ; Method:           hexStringToPattern(hexString)
@@ -1025,8 +1028,8 @@ class _ClassMemory
     {
         AOBPattern := []
         hexString := RegExReplace(hexString, "(\s|0x)")
-        StringReplace, hexString, hexString, ?, ?, UseErrorLevel
-        wildCardCount := ErrorLevel
+        hexString:=StrReplace(hexString, "?", "?", &OutputVarCount) ; really...?
+        wildCardCount := OutputVarCount
 
         if !length := StrLen(hexString)
             return -1 ; no str
@@ -1036,7 +1039,7 @@ class _ClassMemory
             return -3 ; non-even wild card character count
         else if Mod(length, 2)
             return -4 ; non-even character count
-        loop, % length/2
+        loop length/2
         {
             value := "0x" SubStr(hexString, 1 + 2 * (A_index-1), 2)
             AOBPattern.Insert(value + 0 = "" ? "?" : value)
@@ -1072,7 +1075,7 @@ class _ClassMemory
         requiredSize := StrPut(string, encoding) * encodingSize - (insertNullTerminator ? 0 : encodingSize)
         VarSetCapacity(buffer, requiredSize)
         StrPut(string, &buffer, length + (insertNullTerminator ?  1 : 0), encoding) 
-        loop, % requiredSize
+        loop requiredSize
             AOBPattern.Insert(NumGet(buffer, A_Index-1, "UChar"))
         return AOBPattern
     }    
@@ -1094,13 +1097,27 @@ class _ClassMemory
     ;   -9              VirtualQueryEx() failed
     ;   -10             The aAOBPattern* is invalid. No bytes were passed                   
 
+
+
+    ;   -1 - Module not found
+    ;   -3 - EnumProcessModulesEx failed
+    ;   -4 - The AHK script is 32 bit and you are trying to access the modules of a 64 bit target process. Or the target process has been closed.
     modulePatternScan(module := "", aAOBPattern*)
     {
         MEM_COMMIT := 0x1000, MEM_MAPPED := 0x40000, MEM_PRIVATE := 0x20000
         , PAGE_NOACCESS := 0x01, PAGE_GUARD := 0x100
 
-        if (result := this.getModuleBaseAddress(module, aModuleInfo)) <= 0
-             return "", ErrorLevel := result ; failed    
+        if (result := this.getModuleBaseAddress(module, aModuleInfo)) <= 0 {
+            switch result {
+                case -1:
+                    throw ValueError("Module not found")
+                case -3:
+                    throw ValueError("EnumProcessModulesEx failed")
+                case -4:
+                    throw ValueError("The AHK script is 32 bit and you are trying to access the modules of a 64 bit target process. Or the target process has been closed.")
+            }     
+            return ""
+        }
         if !patternSize := this.getNeedleFromAOBPattern(patternMask, AOBBuffer, aAOBPattern*)
             return -10 ; no pattern
         ; Try to read the entire module in one RPM()
@@ -1346,7 +1363,7 @@ class _ClassMemory
     MCode(mcode)
     {
         static e := {1:4, 2:1}, c := (A_PtrSize=8) ? "x64" : "x86"
-        if !regexmatch(mcode, "^([0-9]+),(" c ":|.*?," c ":)([^,]+)", m)
+        if !regexmatch(mcode, "^([0-9]+),(" c ":|.*?," c ":)([^,]+)", &m)
             return
         if !DllCall("crypt32\CryptStringToBinary", "str", m3, "uint", 0, "uint", e[m1], "ptr", 0, "uint*", s, "ptr", 0, "ptr", 0)
             return
@@ -1387,20 +1404,20 @@ class _ClassMemory
         __get(key)
         {
             static aLookUp := A_PtrSize = 8 
-                                ?   {   "BaseAddress": {"Offset": 0, "Type": "Int64"}
-                                    ,    "AllocationBase": {"Offset": 8, "Type": "Int64"}
-                                    ,    "AllocationProtect": {"Offset": 16, "Type": "UInt"}
-                                    ,    "RegionSize": {"Offset": 24, "Type": "Int64"}
-                                    ,    "State": {"Offset": 32, "Type": "UInt"}
-                                    ,    "Protect": {"Offset": 36, "Type": "UInt"}
-                                    ,    "Type": {"Offset": 40, "Type": "UInt"} }
-                                :   {  "BaseAddress": {"Offset": 0, "Type": "UInt"}
-                                    ,   "AllocationBase": {"Offset": 4, "Type": "UInt"}
-                                    ,   "AllocationProtect": {"Offset": 8, "Type": "UInt"}
-                                    ,   "RegionSize": {"Offset": 12, "Type": "UInt"}
-                                    ,   "State": {"Offset": 16, "Type": "UInt"}
-                                    ,   "Protect": {"Offset": 20, "Type": "UInt"}
-                                    ,   "Type": {"Offset": 24, "Type": "UInt"} }
+                                ?   Map(    "BaseAddress",          Map("Offset", 0, "Type", "Int64"),
+                                            "AllocationBase",       Map("Offset", 8, "Type", "Int64"),
+                                            "AllocationProtect",    Map("Offset", 16, "Type", "UInt"),
+                                            "RegionSize",           Map("Offset", 24, "Type", "Int64"),
+                                            "State",                Map("Offset", 32, "Type", "UInt"),
+                                            "Protect",              Map("Offset", 36, "Type", "UInt"),
+                                            "Type",                 Map("Offset", 40, "Type", "UInt"))
+                                :   Map(    "BaseAddress",          Map("Offset", 0, "Type", "UInt"),
+                                            "AllocationBase",       Map("Offset", 4, "Type", "UInt"),
+                                            "AllocationProtect",    Map("Offset", 8, "Type", "UInt"),
+                                            "RegionSize",           Map("Offset", 12, "Type", "UInt"),
+                                            "State",                Map("Offset", 16, "Type", "UInt"),
+                                            "Protect",              Map("Offset", 20, "Type", "UInt"),
+                                            "Type",                 Map("Offset", 24, "Type", "UInt"))
 
             if aLookUp.HasKey(key)
                 return numget(this.pStructure+0, aLookUp[key].Offset, aLookUp[key].Type)        
@@ -1408,20 +1425,20 @@ class _ClassMemory
         __set(key, value)
         {
              static aLookUp := A_PtrSize = 8 
-                                ?   {   "BaseAddress": {"Offset": 0, "Type": "Int64"}
-                                    ,    "AllocationBase": {"Offset": 8, "Type": "Int64"}
-                                    ,    "AllocationProtect": {"Offset": 16, "Type": "UInt"}
-                                    ,    "RegionSize": {"Offset": 24, "Type": "Int64"}
-                                    ,    "State": {"Offset": 32, "Type": "UInt"}
-                                    ,    "Protect": {"Offset": 36, "Type": "UInt"}
-                                    ,    "Type": {"Offset": 40, "Type": "UInt"} }
-                                :   {  "BaseAddress": {"Offset": 0, "Type": "UInt"}
-                                    ,   "AllocationBase": {"Offset": 4, "Type": "UInt"}
-                                    ,   "AllocationProtect": {"Offset": 8, "Type": "UInt"}
-                                    ,   "RegionSize": {"Offset": 12, "Type": "UInt"}
-                                    ,   "State": {"Offset": 16, "Type": "UInt"}
-                                    ,   "Protect": {"Offset": 20, "Type": "UInt"}
-                                    ,   "Type": {"Offset": 24, "Type": "UInt"} }
+                                ?   Map(    "BaseAddress",          Map("Offset", 0, "Type", "Int64"),
+                                            "AllocationBase",       Map("Offset", 8, "Type", "Int64"),
+                                            "AllocationProtect",    Map("Offset", 16, "Type", "UInt"),
+                                            "RegionSize",           Map("Offset", 24, "Type", "Int64"),
+                                            "State",                Map("Offset", 32, "Type", "UInt"),
+                                            "Protect",              Map("Offset", 36, "Type", "UInt"),
+                                            "Type",                 Map("Offset", 40, "Type", "UInt"))
+                                :   Map(    "BaseAddress",          Map("Offset", 0, "Type", "UInt"),
+                                            "AllocationBase",       Map("Offset", 4, "Type", "UInt"),
+                                            "AllocationProtect",    Map("Offset", 8, "Type", "UInt"),
+                                            "RegionSize",           Map("Offset", 12, "Type", "UInt"),
+                                            "State",                Map("Offset", 16, "Type", "UInt"),
+                                            "Protect",              Map("Offset", 20, "Type", "UInt"),
+                                            "Type",                 Map("Offset", 24, "Type", "UInt"))
 
             if aLookUp.HasKey(key)
             {
@@ -1440,3 +1457,7 @@ class _ClassMemory
     }
 
 }
+
+
+
+ 

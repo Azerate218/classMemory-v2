@@ -1,4 +1,6 @@
-﻿/*
+#Requires AutoHotkey v2.0-beta
+
+/*
     A basic memory class by RHCP:
 
     This is a wrapper for commonly used read and write memory functions.
@@ -180,32 +182,32 @@
 */
 
 class _ClassMemory
-{
+{   
     ; List of useful accessible values. Some of these inherited values (the non objects) are set when the new operator is used.
-    static baseAddress, hProcess, PID, currentProgram
+    static baseAddress:=0, hProcess:=0, PID:=0, currentProgram:=""
     , insertNullTerminator := True
     , readStringLastError := False
     , isTarget64bit := False
     , ptrType := "UInt"
-    , aTypeSize := {    "UChar":    1,  "Char":     1
-                    ,   "UShort":   2,  "Short":    2
-                    ,   "UInt":     4,  "Int":      4
-                    ,   "UFloat":   4,  "Float":    4
-                    ,   "Int64":    8,  "Double":   8}  
-    , aRights := {  "PROCESS_ALL_ACCESS": 0x001F0FFF
-                ,   "PROCESS_CREATE_PROCESS": 0x0080
-                ,   "PROCESS_CREATE_THREAD": 0x0002
-                ,   "PROCESS_DUP_HANDLE": 0x0040
-                ,   "PROCESS_QUERY_INFORMATION": 0x0400
-                ,   "PROCESS_QUERY_LIMITED_INFORMATION": 0x1000
-                ,   "PROCESS_SET_INFORMATION": 0x0200
-                ,   "PROCESS_SET_QUOTA": 0x0100
-                ,   "PROCESS_SUSPEND_RESUME": 0x0800
-                ,   "PROCESS_TERMINATE": 0x0001
-                ,   "PROCESS_VM_OPERATION": 0x0008
-                ,   "PROCESS_VM_READ": 0x0010
-                ,   "PROCESS_VM_WRITE": 0x0020
-                ,   "SYNCHRONIZE": 0x00100000}
+    , aTypeSize := Map("UChar", 1,  "Char", 1,
+                       "UShort", 2, "Short", 2,
+                       "UInt", 4,   "Int", 4,
+                       "UFloat", 4, "Float", 4,
+                       "Int64", 8,  "Double", 8)
+    , aRights := Map("PROCESS_ALL_ACCESS", 0x001F0FFF,
+                     "PROCESS_CREATE_PROCESS", 0x0080,
+                     "PROCESS_CREATE_THREAD", 0x0002,
+                     "PROCESS_DUP_HANDLE", 0x0040,
+                     "PROCESS_QUERY_INFORMATION", 0x0400,
+                     "PROCESS_QUERY_LIMITED_INFORMATION", 0x1000,
+                     "PROCESS_SET_INFORMATION", 0x0200,
+                     "PROCESS_SET_QUOTA", 0x0100,
+                     "PROCESS_SUSPEND_RESUME", 0x0800,
+                     "PROCESS_TERMINATE", 0x0001,
+                     "PROCESS_VM_OPERATION", 0x0008,
+                     "PROCESS_VM_READ", 0x0010,
+                     "PROCESS_VM_WRITE", 0x0020,
+                     "SYNCHRONIZE", 0x00100000)
 
 
     ; Method:    __new(program, dwDesiredAccess := "", byRef handle := "", windowMatchMode := 3)
@@ -239,7 +241,7 @@ class _ClassMemory
     ;   Null    Failure. A_LastError and the optional handle parameter can be consulted for more information. 
 
 
-    __new(program, dwDesiredAccess := "", byRef handle := "", windowMatchMode := 3)
+    __new(program, dwDesiredAccess := "", &handle := "", windowMatchMode := 3)
     {         
         if this.PID := handle := this.findPID(program, windowMatchMode) ; set handle to 0 if program not found
         {
@@ -295,35 +297,32 @@ class _ClassMemory
     {
         ; If user passes an AHK_PID, don't bother searching. There are cases where searching windows for PIDs 
         ; wont work - console apps
-        if RegExMatch(program, "i)\s*AHK_PID\s+(0x[[:xdigit:]]+|\d+)", pid)
+        if RegExMatch(program, "i)\s*AHK_PID\s+(0x[[:xdigit:]]+|\d+)", &pid)
             return pid1
         if windowMatchMode
         {
             ; This is a string and will not contain the 0x prefix
             mode := A_TitleMatchMode
             ; remove hex prefix as SetTitleMatchMode will throw a run time error. This will occur if integer mode is set to hex and user passed an int (unquoted)
-            StringReplace, windowMatchMode, windowMatchMode, 0x 
-            SetTitleMatchMode, %windowMatchMode%
+            windowMatchMode := StrReplace(windowMatchMode, "0x")
+            SetTitleMatchMode(windowMatchMode)
         }
-        WinGet, pid, pid, %program%
+        pid := WinGet(program)
         if windowMatchMode
-            SetTitleMatchMode, %mode%    ; In case executed in autoexec
+            SetTitleMatchMode(mode)    ; In case executed in autoexec
 
         ; If use 'ahk_exe test.exe' and winget fails (which can happen when setSeDebugPrivilege is required),
         ; try using the process command. When it fails due to setSeDebugPrivilege, setSeDebugPrivilege will still be required to openProcess
         ; This should also work for apps without windows.
-        if (!pid && RegExMatch(program, "i)\bAHK_EXE\b\s*(.*)", fileName))
+        if (!pid && RegExMatch(program, "i)\bAHK_EXE\b\s*(.*)", &fileName))
         {
             ; remove any trailing AHK_XXX arguments
             filename := RegExReplace(filename1, "i)\bahk_(class|id|pid|group)\b.*", "")
             filename := trim(filename)    ; extra spaces will make process command fail       
             ; AHK_EXE can be the full path, so just get filename
-            SplitPath, fileName , fileName
+            SplitPath(fileName, &fileName)
             if (fileName) ; if filename blank, scripts own pid is returned
-            {
-                process, Exist, %fileName%
-                pid := ErrorLevel
-            }
+                pid := ProcessExist(fileName)
         }
 
         return pid ? pid : 0 ; PID is null on fail, return 0
@@ -427,7 +426,7 @@ class _ClassMemory
     ;                   The address (base address) and offsets should point to the memory address which holds the integer.  
     ; Return Values:
     ;       integer -   Indicates success.
-    ;       Null    -   Indicates failure. Check ErrorLevel and A_LastError for more information.
+    ;       Null    -   Indicates failure. Check A_LastError for more information.
     ;       Note:       Since the returned integer value may be 0, to check for success/failure compare the result
     ;                   against null i.e. if (result = "") then an error has occurred.
     ;                   When reading doubles, adjusting "SetFormat, float, totalWidth.DecimalPlaces"
@@ -435,10 +434,10 @@ class _ClassMemory
 
     read(address, type := "UInt", aOffsets*)
     {
-        ; If invalid type RPM() returns success (as bytes to read resolves to null in dllCall())
-        ; so set errorlevel to invalid parameter for DLLCall() i.e. -2
-        if !this.aTypeSize.hasKey(type)
-            return "", ErrorLevel := -2 
+        if !this.aTypeSize.hasKey(type) {
+            throw ValueError("Invalid type (param #2)") ; no more ErrorLevel in v2. :D
+            return ""
+        }
         if DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.maxIndex() ? this.getAddressFromOffsets(address, aOffsets*) : address, type "*", result, "Ptr", this.aTypeSize[type], "Ptr", this.pNumberOfBytesRead)
             return result
         return        
@@ -465,7 +464,7 @@ class _ClassMemory
     ;                   This method offers significant (~30% and up) performance boost when reading large areas of memory. 
     ;                   As calling ReadProcessMemory for four bytes takes a similar amount of time as it does for 1,000 bytes.                
 
-    readRaw(address, byRef buffer, bytes := 4, aOffsets*)
+    readRaw(address, & buffer, bytes := 4, aOffsets*)
     {
         VarSetCapacity(buffer, bytes)
         return DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.maxIndex() ? this.getAddressFromOffsets(address, aOffsets*) : address, "Ptr", &buffer, "Ptr", bytes, "Ptr", this.pNumberOfBytesRead)
@@ -512,22 +511,25 @@ class _ClassMemory
             else encodingSize := 1, charType := "Char", loopCount := 4
             Loop
             {   ; Lets save a few reads by reading in 4 byte chunks
-                if !DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", address + ((outterIndex := A_index) - 1) * 4, "Ptr", &buffer, "Ptr", 4, "Ptr", this.pNumberOfBytesRead) || ErrorLevel
-                    return "", this.ReadStringLastError := True 
-                else loop, %loopCount%
+                if !DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", address + ((outterIndex := A_index) - 1) * 4, "Ptr", &buffer, "Ptr", 4, "Ptr", this.pNumberOfBytesRead) || ErrorLevel {
+                    this.ReadStringLastError := True 
+                    return ""
+                }
+                else loop loopCount
                 {
                     if NumGet(buffer, (A_Index - 1) * encodingSize, charType) = 0 ; NULL terminator
                     {
                         if (bufferSize < sizeBytes := outterIndex * 4 - (4 - A_Index * encodingSize)) 
                             VarSetCapacity(buffer, sizeBytes)
-                        break, 2
+                        break 2
                     }  
                 } 
             }
         }
         if DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", address, "Ptr", &buffer, "Ptr", sizeBytes, "Ptr", this.pNumberOfBytesRead)   
             return StrGet(&buffer,, encoding)  
-        return "", this.ReadStringLastError := True             
+        this.ReadStringLastError := True
+        return ""          
     }
 
     ; Method:  writeString(address, string, encoding := "utf-8", aOffsets*)
@@ -575,8 +577,10 @@ class _ClassMemory
 
     write(address, value, type := "Uint", aOffsets*)
     {
-        if !this.aTypeSize.hasKey(type)
-            return "", ErrorLevel := -2 
+        if !this.aTypeSize.hasKey(type) {
+            throw ValueError("Invalid type (param #2)") ; no more ErrorLevel in v2. :D
+            return ""
+        }
         return DllCall("WriteProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.maxIndex() ? this.getAddressFromOffsets(address, aOffsets*) : address, type "*", value, "Ptr", this.aTypeSize[type], "Ptr", this.pNumberOfBytesWritten) 
     }
 
@@ -749,7 +753,7 @@ class _ClassMemory
     ;           A 32 bit AHK can only enumerate the modules of a 32 bit process
     ;           This method requires PROCESS_QUERY_INFORMATION + PROCESS_VM_READ access rights. These are included by default with this class.
 
-    getModuleBaseAddress(moduleName := "", byRef aModuleInfo := "")
+    getModuleBaseAddress(moduleName := "", & aModuleInfo := "")
     {
         aModuleInfo := ""
         if (moduleName = "")
@@ -779,7 +783,7 @@ class _ClassMemory
     ;   -3                      EnumProcessModulesEx failed.
     ;   -4                      The AHK script is 32 bit and you are trying to access the modules of a 64 bit target process.      
 
-    getModuleFromAddress(address, byRef aModuleInfo, byRef offsetFromModuleBase := "") 
+    getModuleFromAddress(address, & aModuleInfo, & offsetFromModuleBase := "") 
     {
         aModuleInfo := offsetFromModule := ""
         if result := this.getmodules(aModules) < 0
@@ -887,7 +891,7 @@ class _ClassMemory
     ;   -3                  EnumProcessModulesEx failed.
     ;   -4                  The AHK script is 32 bit and you are trying to access the modules of a 64 bit target process.
 
-    getModules(byRef aModules, useFileNameAsKey := False)
+    getModules(& aModules, useFileNameAsKey := False)
     {
         if (A_PtrSize = 4 && this.IsTarget64bit)
             return -4 ; AHK is 32bit and target process is 64 bit, this function wont work     
@@ -910,7 +914,7 @@ class _ClassMemory
 
 
 
-    getEndAddressOfLastModule(byRef aModuleInfo := "")
+    getEndAddressOfLastModule(& aModuleInfo := "")
     {
         if !moduleCount := this.EnumProcessModulesEx(lphModule)
             return -3     
@@ -949,7 +953,7 @@ class _ClassMemory
     ;   LIST_MODULES_ALL        0x03
     ; If the function is called by a 32-bit application running under WOW64, the dwFilterFlag option 
     ; is ignored and the function provides the same results as the EnumProcessModules function.
-    EnumProcessModulesEx(byRef lphModule, dwFilterFlag := 0x03)
+    EnumProcessModulesEx(& lphModule, dwFilterFlag := 0x03)
     {
         lastError := A_LastError
         size := VarSetCapacity(lphModule, 4)
@@ -973,7 +977,7 @@ class _ClassMemory
         return reqSize // A_PtrSize ; module count  ; sizeof(HMODULE) - enumerate the array of HMODULEs     
     }
 
-    GetModuleInformation(hModule, byRef aModuleInfo)
+    GetModuleInformation(hModule, & aModuleInfo)
     {
         VarSetCapacity(MODULEINFO, A_PtrSize * 3), aModuleInfo := []
         return DllCall("psapi\GetModuleInformation"
@@ -1211,7 +1215,7 @@ class _ClassMemory
     ;   -1                  Not found.
     ;   -2                  Parameter incorrect.
 
-    rawPatternScan(byRef buffer, sizeOfBufferBytes := "", startOffset := 0, aAOBPattern*)
+    rawPatternScan(& buffer, sizeOfBufferBytes := "", startOffset := 0, aAOBPattern*)
     {
         if !this.getNeedleFromAOBPattern(patternMask, AOBBuffer, aAOBPattern*)
             return -10
@@ -1235,7 +1239,7 @@ class _ClassMemory
     ; Return Values:
     ;  The number of bytes in the binary needle and hence the number of characters in the patternMask string. 
 
-    getNeedleFromAOBPattern(byRef patternMask, byRef needleBuffer, aAOBPattern*)
+    getNeedleFromAOBPattern(& patternMask, & needleBuffer, aAOBPattern*)
     {
         patternMask := "", VarSetCapacity(needleBuffer, aAOBPattern.MaxIndex())
         for i, v in aAOBPattern
@@ -1244,7 +1248,7 @@ class _ClassMemory
     }
 
     ; The handle must have been opened with the PROCESS_QUERY_INFORMATION access right
-    VirtualQueryEx(address, byRef aInfo)
+    VirtualQueryEx(address, & aInfo)
     {
 
         if (aInfo.__Class != "_ClassMemory._MEMORY_BASIC_INFORMATION")
@@ -1288,7 +1292,7 @@ class _ClassMemory
     ;   0                   Pattern not found.
     ;   -1                  Failed to read the region.
 
-    patternScan(startAddress, sizeOfRegionBytes, byRef patternMask, byRef needleBuffer)
+    patternScan(startAddress, sizeOfRegionBytes, & patternMask, & needleBuffer)
     {
         if !this.readRaw(startAddress, buffer, sizeOfRegionBytes)
             return -1      
@@ -1314,7 +1318,7 @@ class _ClassMemory
     ; Notes:
     ;       This is a basic function with few safeguards. Incorrect parameters may crash the script.
 
-    bufferScanForMaskedPattern(hayStackAddress, sizeOfHayStackBytes, byRef patternMask, needleAddress, startOffset := 0)
+    bufferScanForMaskedPattern(hayStackAddress, sizeOfHayStackBytes, & patternMask, needleAddress, startOffset := 0)
     {
         static p
         if !p
@@ -1436,7 +1440,3 @@ class _ClassMemory
     }
 
 }
-
-
-
- 

@@ -434,7 +434,7 @@ class _ClassMemory
 
     read(address, type := "UInt", aOffsets*)
     {
-        if !this.aTypeSize.hasKey(type) {
+        if !this.aTypeSize.Has(type) {
             throw ValueError("Invalid type (param #2)") ; no more ErrorLevel in v2. :D
             return ""
         }
@@ -577,7 +577,7 @@ class _ClassMemory
 
     write(address, value, type := "Uint", aOffsets*)
     {
-        if !this.aTypeSize.hasKey(type) {
+        if !this.aTypeSize.Has(type) {
             throw ValueError("Invalid type (param #2)") ; no more ErrorLevel in v2. :D
             return ""
         }
@@ -760,7 +760,7 @@ class _ClassMemory
             moduleName := this.GetModuleFileNameEx(0, True) ; main executable module of the process - get just fileName no path
         if r := this.getModules(aModules, True) < 0
             return r ; -4, -3
-        return aModules.HasKey(moduleName) ? (aModules[moduleName].lpBaseOfDll, aModuleInfo := aModules[moduleName]) : -1
+        return aModules.Has(moduleName) ? (aModules[moduleName].lpBaseOfDll, aModuleInfo := aModules[moduleName]) : -1
         ; no longer returns -5 for failed to get module info
     }  
      
@@ -894,7 +894,7 @@ class _ClassMemory
     ;   -3                  EnumProcessModulesEx failed.
     ;   -4                  The AHK script is 32 bit and you are trying to access the modules of a 64 bit target process.
 
-    getModules(& aModules, useFileNameAsKey := False)
+    getModules(&aModules, useFileNameAsKey := False)
     {
         if (A_PtrSize = 4 && this.IsTarget64bit)
             return -4 ; AHK is 32bit and target process is 64 bit, this function wont work     
@@ -910,7 +910,7 @@ class _ClassMemory
             aModuleInfo.fileName := fileName
             if useFileNameAsKey
                 aModules[fileName] := aModuleInfo
-            else aModules.insert(aModuleInfo)
+            else aModules.Push(aModuleInfo)
         }
         return moduleCount        
     }
@@ -1042,7 +1042,7 @@ class _ClassMemory
         loop length/2
         {
             value := "0x" SubStr(hexString, 1 + 2 * (A_index-1), 2)
-            AOBPattern.Insert(value + 0 = "" ? "?" : value)
+            AOBPattern.Push(value + 0 = "" ? "?" : value)
         }
         return AOBPattern
     }
@@ -1076,7 +1076,7 @@ class _ClassMemory
         VarSetCapacity(buffer, requiredSize)
         StrPut(string, &buffer, length + (insertNullTerminator ?  1 : 0), encoding) 
         loop requiredSize
-            AOBPattern.Insert(NumGet(buffer, A_Index-1, "UChar"))
+            AOBPattern.Push(NumGet(buffer, A_Index-1, "UChar"))
         return AOBPattern
     }    
 
@@ -1419,7 +1419,7 @@ class _ClassMemory
                                             "Protect",              {Offset: 20, Type: "UInt"},
                                             "Type",                 {Offset: 24, Type: "UInt"})
 
-            if aLookUp.HasKey(key)
+            if aLookUp.Has(key)
                 return numget(this.pStructure+0, aLookUp[key].Offset, aLookUp[key].Type)        
         }
         __set(key, value)
@@ -1440,7 +1440,7 @@ class _ClassMemory
                                             "Protect",              {Offset: 20, Type: "UInt"},
                                             "Type",                 {Offset: 24, Type: "UInt"})
 
-            if aLookUp.HasKey(key)
+            if aLookUp.Has(key)
             {
                 NumPut(value, this.pStructure+0, aLookUp[key].Offset, aLookUp[key].Type)            
                 return value

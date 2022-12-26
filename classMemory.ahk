@@ -1404,20 +1404,20 @@ class _ClassMemory
         __get(key)
         {
             static aLookUp := A_PtrSize = 8 
-                                ?   Map(    "BaseAddress",          Map("Offset", 0, "Type", "Int64"),
-                                            "AllocationBase",       Map("Offset", 8, "Type", "Int64"),
-                                            "AllocationProtect",    Map("Offset", 16, "Type", "UInt"),
-                                            "RegionSize",           Map("Offset", 24, "Type", "Int64"),
-                                            "State",                Map("Offset", 32, "Type", "UInt"),
-                                            "Protect",              Map("Offset", 36, "Type", "UInt"),
-                                            "Type",                 Map("Offset", 40, "Type", "UInt"))
-                                :   Map(    "BaseAddress",          Map("Offset", 0, "Type", "UInt"),
-                                            "AllocationBase",       Map("Offset", 4, "Type", "UInt"),
-                                            "AllocationProtect",    Map("Offset", 8, "Type", "UInt"),
-                                            "RegionSize",           Map("Offset", 12, "Type", "UInt"),
-                                            "State",                Map("Offset", 16, "Type", "UInt"),
-                                            "Protect",              Map("Offset", 20, "Type", "UInt"),
-                                            "Type",                 Map("Offset", 24, "Type", "UInt"))
+                                ?   Map(    "BaseAddress",          {Offset: 0,  Type: "Int64"},
+                                            "AllocationBase",       {Offset: 8,  Type: "Int64"},
+                                            "AllocationProtect",    {Offset: 16, Type: "UInt"},
+                                            "RegionSize",           {Offset: 24, Type: "Int64"},
+                                            "State",                {Offset: 32, Type: "UInt"},
+                                            "Protect",              {Offset: 36, Type: "UInt"},
+                                            "Type",                 {Offset: 40, Type: "UInt"})
+                                :   Map(    "BaseAddress",          {Offset: 0,  Type: "UInt"},
+                                            "AllocationBase",       {Offset: 4,  Type: "UInt"},
+                                            "AllocationProtect",    {Offset: 8,  Type: "UInt"},
+                                            "RegionSize",           {Offset: 12, Type: "UInt"},
+                                            "State",                {Offset: 16, Type: "UInt"},
+                                            "Protect",              {Offset: 20, Type: "UInt"},
+                                            "Type",                 {Offset: 24, Type: "UInt"})
 
             if aLookUp.HasKey(key)
                 return numget(this.pStructure+0, aLookUp[key].Offset, aLookUp[key].Type)        
@@ -1425,20 +1425,20 @@ class _ClassMemory
         __set(key, value)
         {
              static aLookUp := A_PtrSize = 8 
-                                ?   Map(    "BaseAddress",          Map("Offset", 0, "Type", "Int64"),
-                                            "AllocationBase",       Map("Offset", 8, "Type", "Int64"),
-                                            "AllocationProtect",    Map("Offset", 16, "Type", "UInt"),
-                                            "RegionSize",           Map("Offset", 24, "Type", "Int64"),
-                                            "State",                Map("Offset", 32, "Type", "UInt"),
-                                            "Protect",              Map("Offset", 36, "Type", "UInt"),
-                                            "Type",                 Map("Offset", 40, "Type", "UInt"))
-                                :   Map(    "BaseAddress",          Map("Offset", 0, "Type", "UInt"),
-                                            "AllocationBase",       Map("Offset", 4, "Type", "UInt"),
-                                            "AllocationProtect",    Map("Offset", 8, "Type", "UInt"),
-                                            "RegionSize",           Map("Offset", 12, "Type", "UInt"),
-                                            "State",                Map("Offset", 16, "Type", "UInt"),
-                                            "Protect",              Map("Offset", 20, "Type", "UInt"),
-                                            "Type",                 Map("Offset", 24, "Type", "UInt"))
+                                ?   Map(    "BaseAddress",          {Offset: 0,  Type: "Int64"},
+                                            "AllocationBase",       {Offset: 8,  Type: "Int64"},
+                                            "AllocationProtect",    {Offset: 16, Type: "UInt"},
+                                            "RegionSize",           {Offset: 24, Type: "Int64"},
+                                            "State",                {Offset: 32, Type: "UInt"},
+                                            "Protect",              {Offset: 36, Type: "UInt"},
+                                            "Type",                 {Offset: 40, Type: "UInt"})
+                                :   Map(    "BaseAddress",          {Offset: 0,  Type: "UInt"},
+                                            "AllocationBase",       {Offset: 4,  Type: "UInt"},
+                                            "AllocationProtect",    {Offset: 8,  Type: "UInt"},
+                                            "RegionSize",           {Offset: 12, Type: "UInt"},
+                                            "State",                {Offset: 16, Type: "UInt"},
+                                            "Protect",              {Offset: 20, Type: "UInt"},
+                                            "Type",                 {Offset: 24, Type: "UInt"})
 
             if aLookUp.HasKey(key)
             {

@@ -189,12 +189,12 @@ class _ClassMemory
     , readStringLastError := False
     , isTarget64bit := False
     , ptrType := "UInt"
-    static aTypeSize := Map("UChar", 1,  "Char", 1,
+    , aTypeSize := Map("UChar", 1,  "Char", 1,
                        "UShort", 2, "Short", 2,
                        "UInt", 4,   "Int", 4,
                        "UFloat", 4, "Float", 4,
                        "Int64", 8,  "Double", 8)
-    static aRights := Map("PROCESS_ALL_ACCESS", 0x001F0FFF,
+    , aRights := Map("PROCESS_ALL_ACCESS", 0x001F0FFF,
                      "PROCESS_CREATE_PROCESS", 0x0080,
                      "PROCESS_CREATE_THREAD", 0x0002,
                      "PROCESS_DUP_HANDLE", 0x0040,
@@ -208,7 +208,7 @@ class _ClassMemory
                      "PROCESS_VM_READ", 0x0010,
                      "PROCESS_VM_WRITE", 0x0020,
                      "SYNCHRONIZE", 0x00100000)
- 
+
 
     ; Method:    __new(program, dwDesiredAccess := "", byRef handle := "", windowMatchMode := 3)
     ; Example:  derivedObject := new _ClassMemory("ahk_exe calc.exe")
@@ -265,14 +265,13 @@ class _ClassMemory
                 ; if script is 64 bit, getModuleBaseAddress() should always work
                 ; if target app is truly 32 bit, then getModuleBaseAddress()
                 ; will work when script is 32 bit
-                if (A_PtrSize != 4 || !this.isTarget64bit) {
-                    this.BaseAddress := this.getModuleBaseAddress() 
-                }
+                if (!this.isTarget64bit) ; Ptr_Size is always 8 in v2
+                    this.BaseAddress := this.getModuleBaseAddress()
+                
 
                 ; If the above failed or wasn't called, fall back to alternate method    
-                if this.BaseAddress < 0 || !this.BaseAddress {
-                    this.BaseAddress := this.getProcessBaseAddress(program, windowMatchMode) 
-                }
+                if this.BaseAddress < 0 || !this.BaseAddress
+                    this.BaseAddress := this.getProcessBaseAddress(program, windowMatchMode)        
 
                 return this
             }
@@ -438,12 +437,12 @@ class _ClassMemory
     {
         if !_ClassMemory.aTypeSize.Has(type) {
             throw ValueError("Invalid type (param #2)") ; no more ErrorLevel in v2. :D
-            ;return ""
+            ;return "" ; unreachable
         }
         if (type = "Float" || type = "Double") ; no checking for string because special method for string
             result := 0.0
         else result := 0
-        if DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.Length ? this.getAddressFromOffsets(address, aOffsets*) : address, type . '*', &result, "Ptr", _ClassMemory.aTypeSize[type], "Ptr", this.pNumberOfBytesRead)
+        if DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.Length ? this.getAddressFromOffsets(address, aOffsets*) : address, type . '*', &result, "Ptr", _ClassMemory.aTypeSize[type], "Ptr", this.pNumberOfBytesRead) ; arr.maxIndex() doesn't exist in v2, since it seemingly is just checking if the arr has anything using .length seems to be fine
             return result
         return        
     }
@@ -504,7 +503,7 @@ class _ClassMemory
 
     readString(address, sizeBytes := 0, encoding := "UTF-8", aOffsets*)
     {
-        bufferSize := VarSetStrCapacity(&buffer, sizeBytes ? sizeBytes : 100)
+        bufferSize := VarSetStrCapacity(&buffer, sizeBytes ? sizeBytes : 100) ; since strictly for strings, no more fill byte
         this.ReadStringLastError := False
         if aOffsets.maxIndex()
             address := this.getAddressFromOffsets(address, aOffsets*)
@@ -584,7 +583,7 @@ class _ClassMemory
     {
         if !_ClassMemory.aTypeSize.Has(type) {
             throw ValueError("Invalid type (param #2)") ; no more ErrorLevel in v2. :D
-            ;return ""
+            ;return "" ; unreachable
         }
         return DllCall("WriteProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.Length ? this.getAddressFromOffsets(address, aOffsets*) : address, type . "*", value, "Ptr", _ClassMemory.aTypeSize[type], "Ptr", this.pNumberOfBytesWritten) 
     }
@@ -684,7 +683,7 @@ class _ClassMemory
 
     getAddressFromOffsets(address, aOffsets*)
     {
-        return  aOffsets.Pop() + this.pointer(address, this.ptrType, aOffsets*) ; remove the highest key so can use pointer() to find final memory address (minus the last offset)       
+        return  aOffsets.Pop() + this.pointer(address, this.ptrType, aOffsets*) ; remove the highest key so can use pointer() to find final memory address (minus the last offset) ; .Remove() is gone, the way it was used it was identical to .Pop() anyway      
     }
 
     ; Interesting note:
@@ -768,7 +767,7 @@ class _ClassMemory
             return r ; -4, -3
         }
         ;return aModules.Has(moduleName) ? (aModules[moduleName].lpBaseOfDll, aModuleInfo := aModules[moduleName]) : -1
-
+        ; ^ old, as far as i can tell this does exactly the same thing, what specifically didn't work before, idk, i don't understand what the comma in the return was doing exactly ¯\_(ツ)_/¯
         if aModules.Has(moduleName) {
             aModuleInfo := aModules[moduleName]
             return aModules[moduleName].lpBaseOfDll
@@ -799,7 +798,7 @@ class _ClassMemory
     getModuleFromAddress(address, & aModuleInfo, & offsetFromModuleBase := "") 
     {
         aModuleInfo := offsetFromModule := ""
-        if result := this.getmodules(&aModules) < 0 ; made aModules ref since it wasn't assigned before
+        if result := this.getmodules(&aModules) < 0
             return result ; error -3, -4
         for k, module in aModules 
         {
@@ -911,15 +910,14 @@ class _ClassMemory
 
     getModules(&aModules, useFileNameAsKey := False)
     {
-        if (A_PtrSize = 4 && this.IsTarget64bit) 
+        if (A_PtrSize = 4 && this.IsTarget64bit)
             return -4 ; AHK is 32bit and target process is 64 bit, this function wont work     
         aModules := Map()
-        if !moduleCount := this.EnumProcessModulesEx(&lphModule) {
+        if !moduleCount := this.EnumProcessModulesEx(&lphModule)
             return -3  
-        }
         loop moduleCount
         {
-            this.GetModuleInformation(hModule := numget(lphModule, (A_index - 1) * A_PtrSize, "UPtr"), &aModuleInfo)
+            this.GetModuleInformation(hModule := numget(lphModule, (A_index - 1) * A_PtrSize, "UPtr"), &aModuleInfo) ; numget() now requires explicit typing
             aModuleInfo.Name := this.GetModuleFileNameEx(hModule)
             filePath := aModuleInfo.name
             SplitPath(filePath, &fileName)
@@ -986,9 +984,9 @@ class _ClassMemory
                         , "Uint", size
                         , "Uint*", &reqSize
                         , "Uint", dwFilterFlag)
-            if !call_return
+            if !call_return ; Replaces `if ErrorLevel` since this will be 0 if the Dll failed
                 return 0
-            if (size >= reqSize) ; Removed `if ErrorLevel`
+            else if (size >= reqSize)
                 break
             else lphModule.Size := reqSize, size := reqSize  
         }
@@ -1001,8 +999,8 @@ class _ClassMemory
     GetModuleInformation(hModule, &aModuleInfo)
     {
         MODULEINFO := Buffer(A_PtrSize * 3, 0), aModuleInfo := []
-        DllCall("psapi\GetModuleInformation",
-                    "Ptr", this.hProcess,
+        DllCall("psapi\GetModuleInformation", ; Not really sure why *this* was getting returned before, didn't seem like it was going to be accomplishing anything
+                    "Ptr", this.hProcess,     ; so just returning the actually relevant part below
                     "Ptr", hModule,
                     "Ptr", MODULEINFO,
                     "UInt", A_PtrSize * 3)

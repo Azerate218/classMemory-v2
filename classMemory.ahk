@@ -189,12 +189,12 @@ class _ClassMemory
     , readStringLastError := False
     , isTarget64bit := False
     , ptrType := "UInt"
-    , aTypeSize := Map("UChar", 1,  "Char", 1,
+    static aTypeSize := Map("UChar", 1,  "Char", 1,
                        "UShort", 2, "Short", 2,
                        "UInt", 4,   "Int", 4,
                        "UFloat", 4, "Float", 4,
                        "Int64", 8,  "Double", 8)
-    , aRights := Map("PROCESS_ALL_ACCESS", 0x001F0FFF,
+    static aRights := Map("PROCESS_ALL_ACCESS", 0x001F0FFF,
                      "PROCESS_CREATE_PROCESS", 0x0080,
                      "PROCESS_CREATE_THREAD", 0x0002,
                      "PROCESS_DUP_HANDLE", 0x0040,
@@ -208,7 +208,7 @@ class _ClassMemory
                      "PROCESS_VM_READ", 0x0010,
                      "PROCESS_VM_WRITE", 0x0020,
                      "SYNCHRONIZE", 0x00100000)
-
+ 
 
     ; Method:    __new(program, dwDesiredAccess := "", byRef handle := "", windowMatchMode := 3)
     ; Example:  derivedObject := new _ClassMemory("ahk_exe calc.exe")
@@ -247,9 +247,9 @@ class _ClassMemory
         {
             ; This default access level is sufficient to read and write memory addresses, and to perform pattern scans.
             ; if the program is run using admin privileges, then this script will also need admin privileges
-            if dwDesiredAccess is not integer       
-                dwDesiredAccess := this.aRights.PROCESS_QUERY_INFORMATION | this.aRights.PROCESS_VM_OPERATION | this.aRights.PROCESS_VM_READ | this.aRights.PROCESS_VM_WRITE
-            dwDesiredAccess |= this.aRights.SYNCHRONIZE ; add SYNCHRONIZE to all handles to allow isHandleValid() to work
+            if !IsInteger(dwDesiredAccess)
+                dwDesiredAccess := _ClassMemory.aRights["PROCESS_QUERY_INFORMATION"] | _ClassMemory.aRights["PROCESS_VM_OPERATION"] | _ClassMemory.aRights["PROCESS_VM_READ"] | _ClassMemory.aRights["PROCESS_VM_WRITE"]
+            dwDesiredAccess |= _ClassMemory.aRights["SYNCHRONIZE"] ; add SYNCHRONIZE to all handles to allow isHandleValid() to work
 
             if this.hProcess := handle := this.OpenProcess(this.PID, dwDesiredAccess) ; NULL/Blank if failed to open process for some reason
             {
@@ -265,12 +265,14 @@ class _ClassMemory
                 ; if script is 64 bit, getModuleBaseAddress() should always work
                 ; if target app is truly 32 bit, then getModuleBaseAddress()
                 ; will work when script is 32 bit
-                if (A_PtrSize != 4 || !this.isTarget64bit)
-                    this.BaseAddress := this.getModuleBaseAddress()
+                if (A_PtrSize != 4 || !this.isTarget64bit) {
+                    this.BaseAddress := this.getModuleBaseAddress() 
+                }
 
                 ; If the above failed or wasn't called, fall back to alternate method    
-                if this.BaseAddress < 0 || !this.BaseAddress
-                    this.BaseAddress := this.getProcessBaseAddress(program, windowMatchMode)            
+                if this.BaseAddress < 0 || !this.BaseAddress {
+                    this.BaseAddress := this.getProcessBaseAddress(program, windowMatchMode) 
+                }
 
                 return this
             }
@@ -298,7 +300,7 @@ class _ClassMemory
         ; If user passes an AHK_PID, don't bother searching. There are cases where searching windows for PIDs 
         ; wont work - console apps
         if RegExMatch(program, "i)\s*AHK_PID\s+(0x[[:xdigit:]]+|\d+)", &pid)
-            return pid1
+            return pid(1)
         if windowMatchMode
         {
             ; This is a string and will not contain the 0x prefix
@@ -317,7 +319,7 @@ class _ClassMemory
         if (!pid && RegExMatch(program, "i)\bAHK_EXE\b\s*(.*)", &fileName))
         {
             ; remove any trailing AHK_XXX arguments
-            filename := RegExReplace(filename1, "i)\bahk_(class|id|pid|group)\b.*", "")
+            filename := RegExReplace(filename(1), "i)\bahk_(class|id|pid|group)\b.*", "")
             filename := trim(filename)    ; extra spaces will make process command fail       
             ; AHK_EXE can be the full path, so just get filename
             SplitPath(fileName, &fileName)
@@ -434,11 +436,14 @@ class _ClassMemory
 
     read(address, type := "UInt", aOffsets*)
     {
-        if !this.aTypeSize.Has(type) {
+        if !_ClassMemory.aTypeSize.Has(type) {
             throw ValueError("Invalid type (param #2)") ; no more ErrorLevel in v2. :D
-            return ""
+            ;return ""
         }
-        if DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.maxIndex() ? this.getAddressFromOffsets(address, aOffsets*) : address, type "*", result, "Ptr", this.aTypeSize[type], "Ptr", this.pNumberOfBytesRead)
+        if (type = "Float" || type = "Double") ; no checking for string because special method for string
+            result := 0.0
+        else result := 0
+        if DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.Length ? this.getAddressFromOffsets(address, aOffsets*) : address, type . '*', &result, "Ptr", _ClassMemory.aTypeSize[type], "Ptr", this.pNumberOfBytesRead)
             return result
         return        
     }
@@ -466,7 +471,7 @@ class _ClassMemory
 
     readRaw(address, & buffer, bytes := 4, aOffsets*)
     {
-        VarSetCapacity(buffer, bytes)
+        VarSetStrCapacity(&buffer, bytes)
         return DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.maxIndex() ? this.getAddressFromOffsets(address, aOffsets*) : address, "Ptr", &buffer, "Ptr", bytes, "Ptr", this.pNumberOfBytesRead)
     }
 
@@ -499,7 +504,7 @@ class _ClassMemory
 
     readString(address, sizeBytes := 0, encoding := "UTF-8", aOffsets*)
     {
-        bufferSize := VarSetCapacity(buffer, sizeBytes ? sizeBytes : 100, 0)
+        bufferSize := VarSetStrCapacity(&buffer, sizeBytes ? sizeBytes : 100)
         this.ReadStringLastError := False
         if aOffsets.maxIndex()
             address := this.getAddressFromOffsets(address, aOffsets*)
@@ -511,7 +516,7 @@ class _ClassMemory
             else encodingSize := 1, charType := "Char", loopCount := 4
             Loop
             {   ; Lets save a few reads by reading in 4 byte chunks
-                if !DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", address + ((outterIndex := A_index) - 1) * 4, "Ptr", &buffer, "Ptr", 4, "Ptr", this.pNumberOfBytesRead) || ErrorLevel {
+                if !DllCall("ReadProcessMemory", "Ptr", this.hProcess, "Ptr", address + ((outterIndex := A_index) - 1) * 4, "Ptr", &buffer, "Ptr", 4, "Ptr", this.pNumberOfBytesRead) { ; removed `|| ErrorLevel` at end of if
                     this.ReadStringLastError := True 
                     return ""
                 }
@@ -520,7 +525,7 @@ class _ClassMemory
                     if NumGet(buffer, (A_Index - 1) * encodingSize, charType) = 0 ; NULL terminator
                     {
                         if (bufferSize < sizeBytes := outterIndex * 4 - (4 - A_Index * encodingSize)) 
-                            VarSetCapacity(buffer, sizeBytes)
+                            VarSetStrCapacity(&buffer, sizeBytes)
                         break 2
                     }  
                 } 
@@ -554,7 +559,7 @@ class _ClassMemory
     {
         encodingSize := (encoding = "utf-16" || encoding = "cp1200") ? 2 : 1
         requiredSize := StrPut(string, encoding) * encodingSize - (this.insertNullTerminator ? 0 : encodingSize)
-        VarSetCapacity(buffer, requiredSize)
+        VarSetStrCapacity(&buffer, requiredSize)
         StrPut(string, &buffer, StrLen(string) + (this.insertNullTerminator ?  1 : 0), encoding)
         return DllCall("WriteProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.maxIndex() ? this.getAddressFromOffsets(address, aOffsets*) : address, "Ptr", &buffer, "Ptr", requiredSize, "Ptr", this.pNumberOfBytesWritten)
     }
@@ -577,11 +582,11 @@ class _ClassMemory
 
     write(address, value, type := "Uint", aOffsets*)
     {
-        if !this.aTypeSize.Has(type) {
+        if !_ClassMemory.aTypeSize.Has(type) {
             throw ValueError("Invalid type (param #2)") ; no more ErrorLevel in v2. :D
-            return ""
+            ;return ""
         }
-        return DllCall("WriteProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.maxIndex() ? this.getAddressFromOffsets(address, aOffsets*) : address, type "*", value, "Ptr", this.aTypeSize[type], "Ptr", this.pNumberOfBytesWritten) 
+        return DllCall("WriteProcessMemory", "Ptr", this.hProcess, "Ptr", aOffsets.Length ? this.getAddressFromOffsets(address, aOffsets*) : address, type . "*", value, "Ptr", _ClassMemory.aTypeSize[type], "Ptr", this.pNumberOfBytesWritten) 
     }
 
     ; Method:   writeRaw(address, pBuffer, sizeBytes, aOffsets*)
@@ -657,7 +662,7 @@ class _ClassMemory
     pointer(address, finalType := "UInt", offsets*)
     { 
         For index, offset in offsets
-            address := this.Read(address, this.ptrType) + offset 
+            address := this.Read(address, this.ptrType) + offset
         Return this.Read(address, finalType)
     }
 
@@ -679,7 +684,7 @@ class _ClassMemory
 
     getAddressFromOffsets(address, aOffsets*)
     {
-        return  aOffsets.Remove() + this.pointer(address, this.ptrType, aOffsets*) ; remove the highest key so can use pointer() to find final memory address (minus the last offset)       
+        return  aOffsets.Pop() + this.pointer(address, this.ptrType, aOffsets*) ; remove the highest key so can use pointer() to find final memory address (minus the last offset)       
     }
 
     ; Interesting note:
@@ -756,11 +761,19 @@ class _ClassMemory
     getModuleBaseAddress(moduleName := "", & aModuleInfo := "")
     {
         aModuleInfo := ""
-        if (moduleName = "")
+        if (moduleName = "") {
             moduleName := this.GetModuleFileNameEx(0, True) ; main executable module of the process - get just fileName no path
-        if r := this.getModules(aModules, True) < 0
+        }
+        if r := this.getModules(&aModules, True) < 0 { ; made aModules ref since it wasn't assigned before
             return r ; -4, -3
-        return aModules.Has(moduleName) ? (aModules[moduleName].lpBaseOfDll, aModuleInfo := aModules[moduleName]) : -1
+        }
+        ;return aModules.Has(moduleName) ? (aModules[moduleName].lpBaseOfDll, aModuleInfo := aModules[moduleName]) : -1
+
+        if aModules.Has(moduleName) {
+            aModuleInfo := aModules[moduleName]
+            return aModules[moduleName].lpBaseOfDll
+        } else return -1
+
         ; no longer returns -5 for failed to get module info
     }  
      
@@ -786,7 +799,7 @@ class _ClassMemory
     getModuleFromAddress(address, & aModuleInfo, & offsetFromModuleBase := "") 
     {
         aModuleInfo := offsetFromModule := ""
-        if result := this.getmodules(aModules) < 0
+        if result := this.getmodules(&aModules) < 0 ; made aModules ref since it wasn't assigned before
             return result ; error -3, -4
         for k, module in aModules 
         {
@@ -808,11 +821,11 @@ class _ClassMemory
     {
         h := DllCall("OpenProcess", "UInt", 0x0400, "Int", false, "UInt", DllCall("GetCurrentProcessId"), "Ptr")
         ; Open an adjustable access token with this process (TOKEN_ADJUST_PRIVILEGES = 32)
-        DllCall("Advapi32.dll\OpenProcessToken", "Ptr", h, "UInt", 32, "PtrP", t)
-        VarSetCapacity(ti, 16, 0)  ; structure of privileges
+        DllCall("Advapi32.dll\OpenProcessToken", "Ptr", h, "UInt", 32, "PtrP", &t)
+        VarSetStrCapacity(&ti, 16)  ; structure of privileges ; no fill byte option in 2.0
         NumPut(1, ti, 0, "UInt")  ; one entry in the privileges array...
         ; Retrieves the locally unique identifier of the debug privilege:
-        DllCall("Advapi32.dll\LookupPrivilegeValue", "Ptr", 0, "Str", "SeDebugPrivilege", "Int64P", luid)
+        DllCall("Advapi32.dll\LookupPrivilegeValue", "Ptr", 0, "Str", "SeDebugPrivilege", "Int64P", &luid)
         NumPut(luid, ti, 4, "Int64")
         if enable
             NumPut(2, ti, 12, "UInt")  ; enable this privilege: SE_PRIVILEGE_ENABLED = 2
@@ -844,12 +857,14 @@ class _ClassMemory
 
     isTargetProcess64Bit(PID, hProcess := "", currentHandleAccess := "")
     {
+        Wow64Process:=-1
+        closeHandle := false
         if !A_Is64bitOS
             return False 
         ; If insufficient rights, open a temporary handle
-        else if !hProcess || !(currentHandleAccess & (this.aRights.PROCESS_QUERY_INFORMATION | this.aRights.PROCESS_QUERY_LIMITED_INFORMATION))
-            closeHandle := hProcess := this.openProcess(PID, this.aRights.PROCESS_QUERY_INFORMATION)
-        if (hProcess && DllCall("IsWow64Process", "Ptr", hProcess, "Int*", Wow64Process))
+        else if !hProcess || !(currentHandleAccess & (_ClassMemory.aRights["PROCESS_QUERY_INFORMATION"] | _ClassMemory.aRights["PROCESS_QUERY_LIMITED_INFORMATION"]))
+            closeHandle := hProcess := this.openProcess(PID, _ClassMemory.aRights["PROCESS_QUERY_INFORMATION"])
+        if (hProcess && DllCall("IsWow64Process", "Ptr", hProcess, "Int*", &Wow64Process))
             result := !Wow64Process
         closeHandle ? this.CloseHandle(hProcess) : ""
         return result
@@ -896,14 +911,15 @@ class _ClassMemory
 
     getModules(&aModules, useFileNameAsKey := False)
     {
-        if (A_PtrSize = 4 && this.IsTarget64bit)
+        if (A_PtrSize = 4 && this.IsTarget64bit) 
             return -4 ; AHK is 32bit and target process is 64 bit, this function wont work     
-        aModules := []
-        if !moduleCount := this.EnumProcessModulesEx(lphModule)
+        aModules := Map()
+        if !moduleCount := this.EnumProcessModulesEx(&lphModule) {
             return -3  
+        }
         loop moduleCount
         {
-            this.GetModuleInformation(hModule := numget(lphModule, (A_index - 1) * A_PtrSize), aModuleInfo)
+            this.GetModuleInformation(hModule := numget(lphModule, (A_index - 1) * A_PtrSize, "UPtr"), &aModuleInfo)
             aModuleInfo.Name := this.GetModuleFileNameEx(hModule)
             filePath := aModuleInfo.name
             SplitPath(filePath, &fileName)
@@ -919,7 +935,7 @@ class _ClassMemory
 
     getEndAddressOfLastModule(& aModuleInfo := "")
     {
-        if !moduleCount := this.EnumProcessModulesEx(lphModule)
+        if !moduleCount := this.EnumProcessModulesEx(&lphModule)
             return -3     
         hModule := numget(lphModule, (moduleCount - 1) * A_PtrSize)
         if this.GetModuleInformation(hModule, aModuleInfo)
@@ -937,12 +953,12 @@ class _ClassMemory
     {
         ; ANSI MAX_PATH = 260 (includes null) - unicode can be ~32K.... but no one would ever have one that size
         ; So just give it a massive size and don't bother checking. Most coders just give it MAX_PATH size anyway
-        VarSetCapacity(lpFilename, 2048 * (A_IsUnicode ? 2 : 1)) 
+        VarSetStrCapacity(&lpFilename, 2048 * 2) ; `(A_IsUnicode ? 2 : 1)` replaced with `2` (v2 is always unicode)
         DllCall("psapi\GetModuleFileNameEx"
                     , "Ptr", this.hProcess
                     , "Ptr", hModule
                     , "Str", lpFilename
-                    , "Uint", 2048 / (A_IsUnicode ? 2 : 1))
+                    , "Uint", 2048 / 2)
         if fileNameNoPath
             SplitPath(lpFilename, &lpFilename) ; strips the path so = GDI32.dll
 
@@ -959,20 +975,22 @@ class _ClassMemory
     EnumProcessModulesEx(& lphModule, dwFilterFlag := 0x03)
     {
         lastError := A_LastError
-        size := VarSetCapacity(lphModule, 4)
+        size := 4
+        reqSize := -1
+        lphModule := Buffer(size, 0)
         loop 
         {
-            DllCall("psapi\EnumProcessModulesEx"
+            call_return := DllCall("psapi\EnumProcessModulesEx"
                         , "Ptr", this.hProcess
-                        , "Ptr", &lphModule
+                        , "Ptr", lphModule
                         , "Uint", size
-                        , "Uint*", reqSize
+                        , "Uint*", &reqSize
                         , "Uint", dwFilterFlag)
-            if ErrorLevel
+            if !call_return
                 return 0
-            else if (size >= reqSize)
+            if (size >= reqSize) ; Removed `if ErrorLevel`
                 break
-            else size := VarSetCapacity(lphModule, reqSize)  
+            else lphModule.Size := reqSize, size := reqSize  
         }
         ; On first loop it fails with A_lastError = 0x299 as its meant to
         ; might as well reset it to its previous version
@@ -982,13 +1000,13 @@ class _ClassMemory
 
     GetModuleInformation(hModule, &aModuleInfo)
     {
-        VarSetCapacity(MODULEINFO, A_PtrSize * 3), aModuleInfo := []
-        return DllCall("psapi\GetModuleInformation",
+        MODULEINFO := Buffer(A_PtrSize * 3, 0), aModuleInfo := []
+        DllCall("psapi\GetModuleInformation",
                     "Ptr", this.hProcess,
                     "Ptr", hModule,
-                    "Ptr", &MODULEINFO,
+                    "Ptr", MODULEINFO,
                     "UInt", A_PtrSize * 3)
-                aModuleInfo := {lpBaseOfDll: numget(MODULEINFO, 0, "Ptr"),
+        return aModuleInfo := {lpBaseOfDll: numget(MODULEINFO, 0, "Ptr"),
                                 SizeOfImage: numget(MODULEINFO, A_PtrSize, "UInt"),
                                 EntryPoint: numget(MODULEINFO, A_PtrSize * 2, "Ptr")}
     }
@@ -1073,7 +1091,7 @@ class _ClassMemory
         AOBPattern := []
         encodingSize := (encoding = "utf-16" || encoding = "cp1200") ? 2 : 1
         requiredSize := StrPut(string, encoding) * encodingSize - (insertNullTerminator ? 0 : encodingSize)
-        VarSetCapacity(buffer, requiredSize)
+        VarSetStrCapacity(&buffer, requiredSize)
         StrPut(string, &buffer, length + (insertNullTerminator ?  1 : 0), encoding) 
         loop requiredSize
             AOBPattern.Push(NumGet(buffer, A_Index-1, "UChar"))
@@ -1107,7 +1125,7 @@ class _ClassMemory
         MEM_COMMIT := 0x1000, MEM_MAPPED := 0x40000, MEM_PRIVATE := 0x20000
         , PAGE_NOACCESS := 0x01, PAGE_GUARD := 0x100
 
-        if (result := this.getModuleBaseAddress(module, aModuleInfo)) <= 0 {
+        if (result := this.getModuleBaseAddress(module, &aModuleInfo)) <= 0 {
             switch result {
                 case -1:
                     throw ValueError("Module not found")
@@ -1118,7 +1136,7 @@ class _ClassMemory
             }     
             return ""
         }
-        if !patternSize := this.getNeedleFromAOBPattern(patternMask, AOBBuffer, aAOBPattern*)
+        if !patternSize := this.getNeedleFromAOBPattern(&patternMask, &AOBBuffer, aAOBPattern*)
             return -10 ; no pattern
         ; Try to read the entire module in one RPM()
         ; If fails with access (-1) iterate the modules memory pages and search the ones which are readable          
@@ -1129,7 +1147,7 @@ class _ClassMemory
         endAddress := address + aModuleInfo.SizeOfImage
         loop 
         {
-            if !this.VirtualQueryEx(address, aRegion)
+            if !this.VirtualQueryEx(address, &aRegion)
                 return -9
             if (aRegion.State = MEM_COMMIT 
             && !(aRegion.Protect & (PAGE_NOACCESS | PAGE_GUARD)) ; can't read these areas
@@ -1158,7 +1176,7 @@ class _ClassMemory
 
     addressPatternScan(startAddress, sizeOfRegionBytes, aAOBPattern*)
     {
-        if !this.getNeedleFromAOBPattern(patternMask, AOBBuffer, aAOBPattern*)
+        if !this.getNeedleFromAOBPattern(&patternMask, &AOBBuffer, aAOBPattern*)
             return -10
         return this.PatternScan(startAddress, sizeOfRegionBytes, patternMask, AOBBuffer)   
     }
@@ -1188,16 +1206,16 @@ class _ClassMemory
     processPatternScan(startAddress := 0, endAddress := "", aAOBPattern*)
     {
         address := startAddress
-        if endAddress is not integer  
+        if !IsInteger(endAddress)
             endAddress := this.isTarget64bit ? (A_PtrSize = 8 ? 0x7FFFFFFFFFF : 0xFFFFFFFF) : 0x7FFFFFFF
 
         MEM_COMMIT := 0x1000, MEM_MAPPED := 0x40000, MEM_PRIVATE := 0x20000
         PAGE_NOACCESS := 0x01, PAGE_GUARD := 0x100
-        if !patternSize := this.getNeedleFromAOBPattern(patternMask, AOBBuffer, aAOBPattern*)
+        if !patternSize := this.getNeedleFromAOBPattern(&patternMask, &AOBBuffer, aAOBPattern*)
             return -10  
         while address <= endAddress ; > 0x7FFFFFFF - definitely reached the end of the useful area (at least for a 32 target process)
         {
-            if !this.VirtualQueryEx(address, aInfo)
+            if !this.VirtualQueryEx(address, &aInfo)
                 return -1
             if A_Index = 1
                 aInfo.RegionSize -= address - aInfo.BaseAddress
@@ -1234,10 +1252,10 @@ class _ClassMemory
 
     rawPatternScan(& buffer, sizeOfBufferBytes := "", startOffset := 0, aAOBPattern*)
     {
-        if !this.getNeedleFromAOBPattern(patternMask, AOBBuffer, aAOBPattern*)
+        if !this.getNeedleFromAOBPattern(&patternMask, AOBBuffer, aAOBPattern*)
             return -10
         if (sizeOfBufferBytes + 0 = "" || sizeOfBufferBytes <= 0)
-            sizeOfBufferBytes := VarSetCapacity(buffer)
+            sizeOfBufferBytes := VarSetStrCapacity(&buffer)
         if (startOffset + 0 = "" || startOffset < 0)
             startOffset := 0
         return this.bufferScanForMaskedPattern(&buffer, sizeOfBufferBytes, patternMask, &AOBBuffer, startOffset)           
@@ -1258,7 +1276,7 @@ class _ClassMemory
 
     getNeedleFromAOBPattern(& patternMask, & needleBuffer, aAOBPattern*)
     {
-        patternMask := "", VarSetCapacity(needleBuffer, aAOBPattern.MaxIndex())
+        patternMask := "", VarSetStrCapacity(&needleBuffer, aAOBPattern.MaxIndex())
         for i, v in aAOBPattern
             patternMask .= (v + 0 = "" ? "?" : "x"), NumPut(round(v), needleBuffer, A_Index - 1, "UChar")
         return round(aAOBPattern.MaxIndex())
@@ -1269,7 +1287,7 @@ class _ClassMemory
     {
 
         if (aInfo.__Class != "_ClassMemory._MEMORY_BASIC_INFORMATION")
-            aInfo := new this._MEMORY_BASIC_INFORMATION()
+            aInfo := this._MEMORY_BASIC_INFORMATION()
         return aInfo.SizeOfStructure = DLLCall("VirtualQueryEx" 
                                                 , "Ptr", this.hProcess
                                                 , "Ptr", address
@@ -1365,11 +1383,11 @@ class _ClassMemory
         static e := {1:4, 2:1}, c := (A_PtrSize=8) ? "x64" : "x86"
         if !regexmatch(mcode, "^([0-9]+),(" c ":|.*?," c ":)([^,]+)", &m)
             return
-        if !DllCall("crypt32\CryptStringToBinary", "str", m3, "uint", 0, "uint", e[m1], "ptr", 0, "uint*", s, "ptr", 0, "ptr", 0)
+        if !DllCall("crypt32\CryptStringToBinary", "str", &m3, "uint", 0, "uint", e[&m1], "ptr", 0, "uint*", &s, "ptr", 0, "ptr", 0)
             return
         p := DllCall("GlobalAlloc", "uint", 0, "ptr", s, "ptr")
         ; if (c="x64") ; Virtual protect must always be enabled for both 32 and 64 bit. If DEP is set to all applications (not just systems), then this is required
-        DllCall("VirtualProtect", "ptr", p, "ptr", s, "uint", 0x40, "uint*", op)
+        DllCall("VirtualProtect", "ptr", p, "ptr", s, "uint", 0x40, "uint*", &op)
         if DllCall("crypt32\CryptStringToBinary", "str", m3, "uint", 0, "uint", e[m1], "ptr", p, "uint*", s, "ptr", 0, "ptr", 0)
             return p
         DllCall("GlobalFree", "ptr", p)

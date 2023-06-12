@@ -265,8 +265,8 @@ class _ClassMemory
                 ; if script is 64 bit, getModuleBaseAddress() should always work
                 ; if target app is truly 32 bit, then getModuleBaseAddress()
                 ; will work when script is 32 bit
-                if (!this.isTarget64bit) ; Ptr_Size is always 8 in v2
-                    this.BaseAddress := this.getModuleBaseAddress()
+                ; Ptr_Size is always 8 in v2 so this condition would always return true
+                this.BaseAddress := this.getModuleBaseAddress()
                 
 
                 ; If the above failed or wasn't called, fall back to alternate method    
